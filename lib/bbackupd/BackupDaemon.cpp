@@ -141,7 +141,7 @@
 		std::string GuidToString(GUID guid)
 		{
 			wchar_t buf[64];
-			StringFromGUID2(guid, buf, sizeof(buf));
+			StringFromGUID2(guid, buf, sizeof(buf) / sizeof(wchar_t));
 			return WideStringToString(buf);
 		}
 
@@ -238,7 +238,8 @@ BackupDaemon::BackupDaemon()
 	  mpLocationResolver(this),
 	  mpRunStatusProvider(this),
 	  mpSysadminNotifier(this),
-	  mapCommandSocketPollTimer(NULL)
+	  mapCommandSocketPollTimer(NULL),
+	  mBackupErrorDelay(0)
 	#ifdef WIN32
 	, mInstallService(false),
 	  mRemoveService(false),
@@ -464,6 +465,7 @@ int BackupDaemon::Main(const std::string &rConfigFileName)
 		return RemoveService(mServiceName);
 	}
 
+#ifdef WIN32
 #ifdef ENABLE_VSS
 	HRESULT result = CoInitialize(NULL);
 	if(result != S_OK)
@@ -472,6 +474,7 @@ int BackupDaemon::Main(const std::string &rConfigFileName)
 			GetMsgForHresult(result));
 		return 1;
 	}
+#endif
 #endif
 
 	CreateMutexes("__boxbackup_mutex__");
@@ -536,7 +539,21 @@ void BackupDaemon::Run()
 				Socket::TypeUNIX, socketName);
 		#endif
 	}
-
+#ifdef WIN32
+#ifdef ENABLE_VSS
+	if (!conf.SubConfigurationExists("VSS")) {
+		const_cast<Configuration&>(conf).AddSubConfig("VSS", Configuration("VSS"));
+	
+		const Configuration& vssConfig = conf.GetSubConfiguration("VSS");
+		if (!vssConfig.KeyExists("Enable")) {
+			const_cast<Configuration&>(vssConfig).AddKeyValue("Enable", "false");
+		}
+		if (!vssConfig.KeyExists("FallBackWhenFail")) {
+			const_cast<Configuration&>(vssConfig).AddKeyValue("FallBackWhenFail", "false");
+		}
+	}
+#endif
+#endif
 	// Handle things nicely on exceptions
 	try
 	{
@@ -1126,8 +1143,12 @@ std::auto_ptr<BackupClientContext> BackupDaemon::RunSyncNow()
 	// Delete any unused directories?
 	DeleteUnusedRootDirEntries(*mapClientContext);
 
+#ifdef WIN32
 #ifdef ENABLE_VSS
-	CreateVssBackupComponents();
+	// VSS configuration
+	const Configuration& vssConfig(conf.GetSubConfiguration("VSS"));
+	CreateVssBackupComponents(vssConfig);
+#endif
 #endif
 
 	// Go through the records, syncing them
@@ -1148,13 +1169,21 @@ std::auto_ptr<BackupClientContext> BackupDaemon::RunSyncNow()
 
 		// Sync the directory
 		std::string locationPath = (*i)->mPath;
-#ifdef ENABLE_VSS
-		if((*i)->mIsSnapshotCreated)
-		{
-			locationPath = (*i)->mSnapshotPath;
-		}
-#endif
 
+#ifdef WIN32
+#ifdef ENABLE_VSS
+		if (vssConfig.GetKeyValueBool("Enable", false)) {
+			if((*i)->mIsSnapshotCreated)
+			{
+				locationPath = (*i)->mSnapshotPath;
+			} else if (!vssConfig.GetKeyValueBool("FallBackWhenFail", false)) {
+				BOX_WARNING("backup for location '" << (*i)->mName << "' is not possible, while VSS is not initialized");
+				continue;
+			}
+		}		
+#endif
+#endif
+		BOX_INFO("backup for location '" << (*i)->mName << "' on directory '" << (*i)->mPath << "'");
 		(*i)->mapDirectoryRecord->SyncDirectory(params,
 			BackupProtocolListDirectory::RootDirectory,
 			locationPath, std::string("/") + (*i)->mName, **i);
@@ -1168,8 +1197,10 @@ std::auto_ptr<BackupClientContext> BackupDaemon::RunSyncNow()
 	// happen neatly.
 	mapClientContext->PerformDeletions();
 
+#ifdef WIN32
 #ifdef ENABLE_VSS
 	CleanupVssBackupComponents();
+#endif
 #endif
 
 	// Get the new store marker
@@ -1210,6 +1241,7 @@ std::auto_ptr<BackupClientContext> BackupDaemon::RunSyncNow()
 	return mapClientContext; // releases mapClientContext
 }
 
+#ifdef WIN32
 #ifdef ENABLE_VSS
 bool BackupDaemon::WaitForAsync(IVssAsync *pAsync,
 	const std::string& description)
@@ -1264,8 +1296,25 @@ bool BackupDaemon::CallAndWaitForAsync(AsyncMethod method,
 	return WaitForAsync(pAsync, description);
 }
 
-void BackupDaemon::CreateVssBackupComponents()
+void BackupDaemon::CreateVssBackupComponents(const Configuration& conf)
 {
+	// reset all SnapShotData
+	for (Locations::iterator
+		iLocation = mLocations.begin();
+		iLocation != mLocations.end();
+		iLocation++)
+	{
+		Location& rLocation(**iLocation);
+		rLocation.mIsSnapshotCreated = false;
+		rLocation.mSnapshotPath = "";
+		//rLocation.mSnapshotVolumeId = NULL;
+	}
+
+	if (!conf.GetKeyValueBool("Enable", false)) {
+		BOX_INFO("VSS: is disabled");
+		return;
+	}
+
 	std::map<char, VSS_ID> volumesIncluded;
 
 	HRESULT result = ::CreateVssBackupComponents(&mpVssBackupComponents);
@@ -1755,6 +1804,7 @@ void BackupDaemon::CleanupVssBackupComponents()
 	mpVssBackupComponents->Release();
 	mpVssBackupComponents = NULL;
 }
+#endif
 #endif
 
 void BackupDaemon::OnBackupStart()

@@ -410,7 +410,7 @@ std::string ConvertPathToAbsoluteUnicode(const char *pFileName);
 
 // Utility function which returns a default config file name,
 // based on the path of the current executable.
-std::string GetDefaultConfigFilePath(const std::string& rName);
+std::string GetDefaultConfigFilePath(const std::string& rName, bool searchInUserPath = false, bool searchForMachineConfig = false);
 
 // GetErrorMessage() returns a system error message, like strerror() 
 // but for Windows error codes.

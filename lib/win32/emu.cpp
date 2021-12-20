@@ -93,25 +93,44 @@ bool EnableBackupRights()
 //		Created: 26th May 2007
 //
 // --------------------------------------------------------------------------
-std::string GetDefaultConfigFilePath(const std::string& rName)
+std::string GetDefaultConfigFilePath(const std::string& rName, bool searchInUserPath, bool searchForMachineConfig)
 {
-	WCHAR exePathWide[MAX_PATH];
-	GetModuleFileNameW(NULL, exePathWide, MAX_PATH-1);
+	if (searchInUserPath) {
+		std::string configPath(MAX_PATH, 0);
+		// check if we have a user specified default config file
+		configPath.resize(ExpandEnvironmentStrings("%APPDATA%\\BoxBackup\\", (char*)configPath.c_str(), MAX_PATH) - 1);
+		configPath += rName;
+		if (GetFileAttributes(configPath.c_str()) != -1) {
+			return configPath;
+		}
+	}	
 
-	char* exePathUtf8 = ConvertFromWideString(exePathWide, CP_UTF8);
-	if (exePathUtf8 == NULL)
-	{
-		return "";
-	}
+	CHAR exePathWide[MAX_PATH];
+	GetModuleFileName(NULL, exePathWide, MAX_PATH-1);
 
-	std::string configfile = exePathUtf8;
-	delete [] exePathUtf8;
-	
+	std::string configfile = exePathWide;
+	// 
 	// make the default config file name,
 	// based on the program path
 	configfile = configfile.substr(0,
 		configfile.rfind('\\'));
-	configfile += "\\";
+	configfile += "\\";	
+
+	if (searchForMachineConfig) {
+		size_t baseDirlen = configfile.length();
+
+		// build a pc specified config file
+		DWORD BufferSize = MAX_PATH - 1;
+		GetComputerName(exePathWide, &BufferSize);
+		configfile += exePathWide;
+		configfile += ".config";
+		// check if we have a pc specified config file
+		if (GetFileAttributes(configfile.c_str()) != -1) {
+			return configfile;
+		}
+		configfile.resize(baseDirlen);
+	}	
+
 	configfile += rName;
 
 	return configfile;

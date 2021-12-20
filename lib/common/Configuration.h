@@ -125,6 +125,7 @@ public:
 	int GetKeyValueInt(const std::string& rKeyName, int default_value) const;
 	uint32_t GetKeyValueUint32(const std::string& rKeyName) const;
 	bool GetKeyValueBool(const std::string& rKeyName) const;
+	bool GetKeyValueBool(const std::string& rKeyName, bool defaultValue) const;
 	std::vector<std::string> GetKeyNames() const;
 	
 	bool SubConfigurationExists(const std::string& rSubName) const;

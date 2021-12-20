@@ -31,8 +31,8 @@ inline bool iw(int c)
 }
 
 // boolean values
-static const char *sValueBooleanStrings[] = {"yes", "true", "no", "false", 0};
-static const bool sValueBooleanValue[] = {true, true, false, false};
+static const char *sValueBooleanStrings[] = {"yes", "true", "1", "no", "false", "0", 0};
+static const bool sValueBooleanValue[] = {true, true, true, false, false, false};
 
 const ConfigurationCategory ConfigurationVerify::VERIFY_ERROR("VerifyError");
 
@@ -350,6 +350,21 @@ bool Configuration::LoadInto(Configuration &rConfig, FdGetLine &rGetLine, std::s
 					{
 						std::string key(line.substr(0, keyend));
 						std::string value(line.substr(valuestart));
+#ifdef WIN32
+						if ((key.rfind(TEXT("File")) == key.length() - 4)
+							|| (key.rfind(TEXT("Directory")) == key.length() - 9))
+						{
+							// parameter end's with 'File' or 'Directory'
+							std::string value_new(1024, 0);
+							// now we must expand with environmentvariable
+							DWORD cbChars = ExpandEnvironmentStrings(value.c_str(), const_cast<LPTSTR>(value_new.c_str()), value_new.capacity());
+							if (cbChars > 0)
+							{
+								value_new.resize(cbChars - 1);
+								value = value_new;
+							}
+						}
+#endif
 						rConfig.AddKeyValue(key, value);
 					}
 					else
@@ -547,6 +562,36 @@ bool Configuration::GetKeyValueBool(const std::string& rKeyName) const
 		return value;
 	}
 
+}
+
+bool Configuration::GetKeyValueBool(const std::string& rKeyName, bool defaultValue) const
+{
+	std::map<std::string, std::string>::const_iterator i(mKeys.find(rKeyName));
+
+	if (i == mKeys.end())
+	{
+		return defaultValue;
+	}
+	else
+	{
+		bool value = false;
+
+		// Anything this is called for should have been verified as having a correct
+		// string in the verification section. However, this does default to false
+		// if it isn't in the string table.
+
+		for (int l = 0; sValueBooleanStrings[l] != 0; ++l)
+		{
+			if (::strcasecmp((i->second).c_str(), sValueBooleanStrings[l]) == 0)
+			{
+				// Found.
+				value = sValueBooleanValue[l];
+				break;
+			}
+		}
+
+		return value;
+	}
 }
 
 

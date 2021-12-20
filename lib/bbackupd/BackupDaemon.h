@@ -525,14 +525,16 @@ public:
 	std::string mServiceName;
 #endif
 
+#ifdef WIN32
 #ifdef ENABLE_VSS
 	IVssBackupComponents* mpVssBackupComponents;
-	void CreateVssBackupComponents();
+	void CreateVssBackupComponents(const Configuration& conf);
 	bool WaitForAsync(IVssAsync *pAsync, const std::string& description);
 	typedef HRESULT (__stdcall IVssBackupComponents::*AsyncMethod)(IVssAsync**);
 	bool CallAndWaitForAsync(AsyncMethod method,
 		const std::string& description);
 	void CleanupVssBackupComponents();
+#endif
 #endif
 };
 
