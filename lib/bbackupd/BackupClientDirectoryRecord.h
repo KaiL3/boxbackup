@@ -236,11 +236,12 @@ public:
 	std::auto_ptr<ExcludeList> mapExcludeFiles;
 	std::auto_ptr<ExcludeList> mapExcludeDirs;
 	int mIDMapIndex;
-
+#ifdef WIN32
 #ifdef ENABLE_VSS
 	bool mIsSnapshotCreated;
 	VSS_ID mSnapshotVolumeId;
 	std::string mSnapshotPath;
+#endif
 #endif
 };
 

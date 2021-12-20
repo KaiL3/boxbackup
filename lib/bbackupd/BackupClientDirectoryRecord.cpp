@@ -2213,6 +2213,13 @@ void BackupClientDirectoryRecord::Serialize(Archive & rArchive) const
 // --------------------------------------------------------------------------
 Location::Location()
 : mIDMapIndex(0)
+#ifdef WIN32
+#ifdef ENABLE_VSS
+, mIsSnapshotCreated(false)
+, mSnapshotPath("")
+, mSnapshotVolumeId(_GUID())
+#endif
+#endif
 { }
 
 // --------------------------------------------------------------------------
