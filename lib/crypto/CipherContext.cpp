@@ -167,7 +167,7 @@ void CipherContext::Reset()
 	if(mInitialised)
 	{
 		// Clean up
-		EVP_CIPHER_CTX_cleanup(BOX_OPENSSL_CTX(ctx));
+		EVP_CIPHER_CTX_reset(BOX_OPENSSL_CTX(ctx));
 		mInitialised = false;
 	}
 #ifdef HAVE_OLD_SSL

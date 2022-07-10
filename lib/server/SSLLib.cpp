@@ -39,7 +39,7 @@
 // --------------------------------------------------------------------------
 void SSLLib::Initialise()
 {
-	if(!::SSL_library_init())
+	if(!::OPENSSL_init_ssl(0, NULL))
 	{
 		THROW_EXCEPTION_MESSAGE(ServerException,
 			SSLLibraryInitialisationError,
@@ -47,7 +47,8 @@ void SSLLib::Initialise()
 	}
 	
 	// More helpful error messages
-	::SSL_load_error_strings();
+	::OPENSSL_init_ssl(OPENSSL_INIT_LOAD_SSL_STRINGS \
+		| OPENSSL_INIT_LOAD_CRYPTO_STRINGS, NULL);
 
 	// Extra seeding over and above what's already done by the library
 #ifdef WIN32
