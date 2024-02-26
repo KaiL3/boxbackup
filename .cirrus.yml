@@ -16,39 +16,48 @@ standard_build: &standard_build
 standard_gce_instance: &standard_gce_instance
   zone: europe-west2-c
   type: n1-standard-1  # 1 vCPU, 3.75GB mem
-  disk: 10
+  disk: 30  # FreeBSD image is 29GB, VM can't be smaller
   use_ssd: true
   #preemptible: $CIRRUS_BRANCH != "master"
 
 task:
-  name: CentOS 7 amd64
-  gce_instance:
-    <<: *standard_gce_instance
-    image_project: centos-cloud
-    image_name: centos-7-v20190619
+  matrix:
+    - name: CentOS 7 amd64
+      gce_instance:
+        <<: *standard_gce_instance
+        image_project: centos-cloud
+        image_name: centos-7-v20190619
+    - name: CentOS 8 amd64
+      gce_instance:
+        <<: *standard_gce_instance
+        image_project: centos-cloud
+        image_family: centos-stream-8
   setup_script:
-    - yum install -y git autoconf automake gcc gcc-c++ zlib-devel openssl-devel libdb-devel readline-devel make libxslt perl-libwww-perl boost-devel
+    - yum install -y --disablerepo=google-cloud-sdk --disablerepo=google-compute-engine git autoconf automake gcc gcc-c++ zlib-devel openssl-devel libdb-devel readline-devel make libxslt perl-libwww-perl boost-devel
     - useradd -m build
     - chown -R build: .
   <<: *standard_build
 
+# gcloud compute images list --project=debian-cloud
+# gcloud compute images list --filter debian --show-deprecated
 task:
   matrix:
-    - name: Debian 9 i386
+    - name: Debian 10 i386
       gce_instance:
         <<: *standard_gce_instance
         image_project: debian-cloud
-        image_name: debian-9-stretch-v20190618
+        image_family: debian-10
       setup_chroot_script:
         - ./infrastructure/setup-debian-chroot.sh
-        - schroot --begin-session --session-name stretch-build --chroot stretch
+        - schroot --begin-session --session-name debian-i386 --chroot buster
       env:
-        CHROOT: schroot --run-session --chroot stretch-build --directory /tmp/cirrus-ci-build --
-    - name: Debian 9 amd64
+        CHROOT: schroot --run-session --chroot debian-i386 --directory /tmp/cirrus-ci-build --
+
+    - name: Debian 10 amd64
       gce_instance:
         <<: *standard_gce_instance
         image_project: debian-cloud
-        image_name: debian-9-stretch-v20190618
+        image_family: debian-10
 
   setup_script:
     - ${CHROOT} apt-get update
@@ -57,14 +66,29 @@ task:
     - ${CHROOT} chown -R build: .
   <<: *standard_build
 
+freebsd_gce_instance: &freebsd_gce_instance
+  <<: *standard_gce_instance
+  platform: FreeBSD
+  image_project: freebsd-org-cloud-dev
+  # Need to use image_name for now: https://github.com/cirruslabs/cirrus-ci-docs/issues/422
+
 task:
-  name: FreeBSD 12.0 amd64
-  gce_instance:
-    <<: *standard_gce_instance
-    image_project: freebsd-org-cloud-dev
-    image_name: freebsd-12-0-release-amd64
-    disk: 30  # Image is 29GB, VM can't be smaller
-    platform: FreeBSD
+  matrix:
+    # FreeBSD 14 has a newer GCC that's removed support for std::auto_ptr, so we can't enable it
+    # until we have worked around that:
+    # - name: FreeBSD 14.0 (pre) amd64
+    #   gce_instance:
+    #     <<: *freebsd_gce_instance
+    #     image_family: freebsd-14-0-snap
+    - name: FreeBSD 13.0 amd64
+      gce_instance:
+        <<: *freebsd_gce_instance
+        image_family: freebsd-13-0
+    - name: FreeBSD 12.3 amd64
+      gce_instance:
+        <<: *freebsd_gce_instance
+        image_family: freebsd-12-3
+
   setup_script:
     - pkg install -y git autoconf automake libxslt p5-libwww boost-libs
     - pw useradd build -m -w none
@@ -72,9 +96,9 @@ task:
   <<: *standard_build
 
 task:
-  name: MacOS Mojave
-  osx_instance:
-    image: mojave-xcode-10.2
+  name: MacOS Ventura
+  macos_instance:
+    image: ghcr.io/cirruslabs/macos-ventura-xcode:latest
   env:
     CPPFLAGS: -I/usr/local/opt/openssl/include
     LDFLAGS: -L/usr/local/opt/openssl/lib
@@ -82,7 +106,8 @@ task:
     - brew install autoconf automake openssl readline
   # Don't use standard_build for now - not sure if the build user is required, or how to add users on macOS
   configure_script:
-    - export CPPFLAGS LDFLAGS
+    - export CPPFLAGS="-I/opt/homebrew/opt/openssl@3.1/include"
+    - export LDFLAGS="-L/opt/homebrew/opt/openssl@3.1/lib"
     - ./bootstrap
     - ./configure
   build_client_script:
@@ -94,6 +119,7 @@ task:
   release_tests_script:
     - make release_tests
 
+# gcloud compute images list --filter ubuntu-os-cloud
 task:
   matrix:
     - name: Ubuntu 16.04 amd64
@@ -106,9 +132,28 @@ task:
         <<: *standard_gce_instance
         image_project: ubuntu-os-cloud
         image_name: ubuntu-1804-bionic-v20190617
+    - name: Ubuntu 20.04 amd64
+      gce_instance:
+        <<: *standard_gce_instance
+        image_project: ubuntu-os-cloud
+        image_family: ubuntu-2004-lts
   setup_script:
     - apt-get update
     - apt-get install -y git autoconf automake gcc g++ zlib1g-dev libssl-dev libdb-dev libreadline-dev libeditline-dev make xsltproc libwww-perl libboost-dev
+    - useradd -m build
+    - chown -R build .
+  <<: *standard_build
+
+task:
+  matrix:
+    - name: Ubuntu 23.04 amd64
+      gce_instance:
+        <<: *standard_gce_instance
+        image_project: ubuntu-os-cloud
+        image_name: ubuntu-2304-lunar-amd64-v20231020
+  setup_script:
+    - apt-get update
+    - apt-get install -y git autoconf automake gcc g++ zlib1g-dev libssl-dev libdb-dev libeditreadline-dev make xsltproc libwww-perl libboost-dev
     - useradd -m build
     - chown -R build .
   <<: *standard_build
